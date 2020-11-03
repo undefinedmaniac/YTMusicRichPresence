@@ -1,0 +1,9 @@
+{
+  "name": "undefinedsoftware.ytmusicrichpresence",
+  "description": "YTMusicRichPresence Native Application",
+  "path": "D:\\Documents\\Programming\\YTMusicRichPresence\\YTMusicRichPresence.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://ejndcnalednfhediiblcciedeclaioid/"
+  ]
+}

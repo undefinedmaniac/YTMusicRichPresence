@@ -1,0 +1,19 @@
+{
+    "name": "YTMusicRichPresence",
+    "version": "1.0",
+    "description": "Provides Discord Rich Presence integration for YouTube Music",
+    "background": {
+        "scripts": ["background.js"],
+        "persistent": false
+    },
+    "permissions": [
+        "nativeMessaging"
+    ],
+    "content_scripts": [
+        {
+            "matches": ["*://music.youtube.com/*"],
+            "js": ["YTMusicContentScript.js"]
+        }
+    ],
+    "manifest_version": 2
+}
