@@ -1,5 +1,5 @@
 # YTMusicRichPresence
 Discord Rich Presence intrgration for YouTube Music
 
-Here is what it looks like:
-![Example image](/Example.png)
+This is how it looks on Discord:
+![Example Image](/Example.PNG)
