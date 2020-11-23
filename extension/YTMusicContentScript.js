@@ -1,137 +1,189 @@
+var playButtonElement = null;
+var playButtonInterval = null;
+
+var contentWrapper = null;
+var progressBarElement = null;
+var songInfoInterval = null;
+
+var isPlaying = false;
+var playingTimeout = null;
+
+var title = 'Unknown';
+var subtitle = '';
+var finishTimestamp = 0;
+var songInfoTimeout = null;
+
 var port = chrome.runtime.connect();
 port.onMessage.addListener(function(message) {
-    if (message.request == "ForceUpdate") {
-        updateSongTitle();
-        updateAlbumArtist();
-        updateFinishTimestamp();
-        sendSongInfoUpdate();
-    }
+    if (message.request == "ForceUpdate")
+        forceUpdate();
 });
-setInterval(periodic, 2000);
 
-var isPlaying = false
-var title = '';
-var artist = '';
-var album = '';
-var finishTimestamp = 0;
+playButtonInterval = setInterval(locatePlayButton, 500);
 
-var subtitle = '';
-var wasSongInfoUpdatedLastLoop = false;
-
-function periodic()
+// Locate the play button on the DOM and setup tracking
+function locatePlayButton() 
 {
-    let justStartedPlaying = false;
-    // Send an update message if there is new information
-    if (updatePlaying()) {
-        sendPlayingUpdate();
-        justStartedPlaying = isPlaying;
-    }
+    playButtonElement = document.getElementById('play-pause-button');
 
-    // No need to update song information if not playing
-    if (!isPlaying) {
-        wasSongInfoUpdatedLastLoop = false;
+    if (playButtonElement !== null) {
+        clearInterval(playButtonInterval);
+
+        const observer = new MutationObserver(startPlayingUpdate);
+        const options = {
+            attributes: true,
+            attributeFilter: ['title']
+        };
+        observer.observe(playButtonElement, options);
+
+        startPlayingUpdate();
+    }
+}
+
+// Starts a playing update by reading the current playing value and then
+// scheduling a future call to finishPlayingUpdate
+function startPlayingUpdate(records = null, observer = null, overrideTimeout = false)
+{
+    let attribute = playButtonElement.getAttribute('title');
+    let isCurrentlyPlaying = (attribute === 'Pause');
+
+    clearTimeout(playingTimeout);
+
+    // Leave if the value isn't different than our previous value
+    if (isPlaying === isCurrentlyPlaying)
         return;
+
+    // This timeout serves to ensure that several quick changes to the playing
+    // value only result in a single update
+    if (!overrideTimeout) {
+        playingTimeout = setTimeout(finishPlayingUpdate, 500, isCurrentlyPlaying);
+    } else {
+        finishPlayingUpdate(isCurrentlyPlaying);
     }
-
-    let wasSongInfoUpdated = updateSongTitle() || updateAlbumArtist() || updateFinishTimestamp();
-
-    // Send an update message if there is any new information which as remained stable
-    // since the last loop or if we have just started playing
-    if ((!wasSongInfoUpdated && wasSongInfoUpdatedLastLoop) || justStartedPlaying)
-        sendSongInfoUpdate();
-
-    wasSongInfoUpdatedLastLoop = wasSongInfoUpdated;
 }
 
-// Update the playing/stopped status and return true if it was changed, false otherwise
-function updatePlaying()
+// Finish the update by ensuring that the final value is actually different from the
+// stored value and then issuing an update message to the background script
+function finishPlayingUpdate(isCurrentlyPlaying)
 {
-    let button = document.getElementById('play-pause-button');
-    if (button !== null) {
-        let attribute = button.getAttribute('title');
-        let newIsPlaying = (attribute == 'Pause');
-        if (newIsPlaying != isPlaying) {
-            isPlaying = newIsPlaying;
-            return true;
-        }
-    }
+    isPlaying = isCurrentlyPlaying;
 
-    return false;
-}
-
-// Update the song title and return true if it was changed, false otherwise
-function updateSongTitle()
-{
-    let elements = document.getElementsByClassName('title style-scope ytmusic-player-bar');
-    if (elements.length > 0) {
-        let newTitle = elements[0].getAttribute('title');
-        if (newTitle !== null && newTitle != title) {
-            title = newTitle;
-            return true;
-        }
-    }
-
-    return false;
-}
-
-// Update the album and artist and return true if it was changed, false otherwise
-function updateAlbumArtist()
-{
-    let elements = document.getElementsByClassName('byline style-scope ytmusic-player-bar complex-string');
-    if (elements.length > 0) {
-        let newSubtitle = elements[0].getAttribute('title');
-        // Wait for the ad to finish before updating song information
-        if (newSubtitle !== null && newSubtitle != subtitle && newSubtitle != "Video will play after ad") {
-            subtitle = newSubtitle;
-            let subtitleParts = newSubtitle.split('•');
-            if (subtitleParts.length > 0) {
-                artist = subtitleParts[0].trim();
-                
-                if (subtitleParts.length > 1)
-                    album = subtitleParts[1].trim();
-
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-function updateFinishTimestamp()
-{
-    let progressBar = document.getElementById('progress-bar');
-    if (progressBar != null) {
-        let value = progressBar.getAttribute('value');
-        let maxValue = progressBar.getAttribute('aria-valuemax');
-
-        if (value != null && maxValue != null) {
-            let secondsLeft = maxValue - value;
-
-            let date = new Date();
-            let epochSeconds = Math.round(date.getTime() / 1000);
-
-            let newFinishTimestamp = epochSeconds + secondsLeft;
-            if (Math.abs(newFinishTimestamp - finishTimestamp) > 2) {
-                finishTimestamp = newFinishTimestamp;
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-function sendPlayingUpdate()
-{
+    // Notify the background script of the new playing value
     port.postMessage({event: isPlaying ? 'Playing' : 'Stopped'});
+
+    // If we have not found the song info elements yet
+    if (songInfoInterval === null)
+        songInfoInterval = setInterval(locateSongInfoElements, 500);
+
+    // Force update after playing is started
+    if (isPlaying)
+        forceUpdate();
 }
 
-function sendSongInfoUpdate()
+// Locate all the song info elements and setup tracking
+function locateSongInfoElements()
 {
-    // Never send updates with missing information
-    if (title == '' || artist == '')
+    // Locate elemenets on the DOM
+    let elements = document.getElementsByClassName('content-info-wrapper style-scope ytmusic-player-bar');
+    contentWrapper = elements.length > 0 ? elements[0] : null;
+
+    progressBarElement = document.getElementById('progress-bar');
+
+    // If the elements were found, bind mutation observers and force an update
+    if (contentWrapper !== null && progressBarElement !== null) {
+        clearInterval(songInfoInterval);
+
+        const contentObserver = new MutationObserver(startSongInfoUpdate);
+        const contentObserverOptions = {
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['title']
+        };
+        contentObserver.observe(contentWrapper, contentObserverOptions);
+
+        const progressBarObserver = new MutationObserver(startSongInfoUpdate);
+        const progressBarOptions = {
+            attributes: true,
+            attributeFilter: ['value', 'aria-valuemax']
+        };
+        progressBarObserver.observe(progressBarElement, progressBarOptions);
+        
+        startSongInfoUpdate();
+    }
+}
+
+// Starts a song info update by reading the current song info values and then
+// scheduling a future call to finishSongInfoUpdate
+function startSongInfoUpdate(records = null, observer = null, overrideTimeout = false)
+{
+    // Find the title and subtitle elements every time so they state accurate
+    let elements = contentWrapper.getElementsByClassName('title style-scope ytmusic-player-bar');
+    let titleElement = elements.length > 0 ? elements[0] : null;
+    
+    elements = contentWrapper.getElementsByClassName('byline style-scope ytmusic-player-bar complex-string');
+    let subtitleElement = elements.length > 0 ? elements[0] : null;
+
+    let newTitle = titleElement !== null ? titleElement.getAttribute('title') : '';
+    let newSubtitle = subtitleElement !== null ? subtitleElement.getAttribute('title') : '';
+
+    let newValue = progressBarElement.getAttribute('value');
+    let newMaxValue = progressBarElement.getAttribute('aria-valuemax');
+
+    // Compute the new timestamp
+    let secondsLeft = newMaxValue - newValue;
+
+    let date = new Date();
+    let epochSeconds = Math.round(date.getTime() / 1000);
+
+    let newFinishTimestamp = epochSeconds + secondsLeft;
+
+    clearTimeout(songInfoTimeout);
+
+    // Leave if no song information actually changed or this is an advertisement
+    if ((title === newTitle && 
+        subtitle === newSubtitle &&
+        Math.abs(newFinishTimestamp - finishTimestamp) <= 2) || 
+        newSubtitle === 'Video will play after ad') 
         return;
 
+    if (!overrideTimeout) {
+        songInfoTimeout = setTimeout(finishSongInfoUpdate, 500, newTitle, newSubtitle, newFinishTimestamp);
+    } else {
+        finishSongInfoUpdate(newTitle, newSubtitle, newFinishTimestamp);
+    }
+}
+
+// Finish the update by ensuring that the final values are actually different from the
+// stored values and then issuing an update message to the background script
+function finishSongInfoUpdate(newTitle, newSubtitle, newFinishTimestamp)
+{
+    // Update the stored song information
+    title = newTitle;
+    subtitle = newSubtitle;
+    finishTimestamp = newFinishTimestamp;
+
+    // Extract the artist and album from the subtitle
+    let artist = 'Unknown';
+    let album = 'Unknown';
+    let subtitleParts = subtitle.split('•');
+    if (subtitleParts.length > 0) {
+        artist = subtitleParts[0].trim();
+        
+        if (subtitleParts.length > 1)
+            album = subtitleParts[1].trim();
+    }
+
+    // Notify the background script of the new song information
     port.postMessage({event: 'Update', title: title, artist: artist, album: album, finishTimestamp: finishTimestamp});
+}
+
+function forceUpdate()
+{
+    if (contentWrapper !== null && progressBarElement !== null) {
+        title = '';
+        subtitle = '';
+        finishTimestamp = 0;
+
+        startSongInfoUpdate(null, null, true);
+    }
 }

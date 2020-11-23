@@ -12,7 +12,7 @@
     "content_scripts": [
         {
             "matches": ["*://music.youtube.com/*"],
-            "js": ["YTMusicContentScriptNew.js"],
+            "js": ["YTMusicContentScript.js"],
             "run_at": "document_end"
         }
     ],
