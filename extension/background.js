@@ -21,8 +21,8 @@ var playingTabs = {
 
             if (this.tabs.length <= 0) {
                 // There are no more playing tabs, check if the tab
-                // we just removed is still open (it will not be in ports)
-                // if it was completely closed
+                // we just removed is still open (it will not be in ports
+                // if it was completely closed)
                 if (tabId in ports) {
                     // Set the paused state, prepare to close Rich Presence
                     // in 5 minutes if no other tabs start playing
@@ -99,6 +99,10 @@ function handleDisconnect(port)
 
     // Remove from playing tabs if necessary
     playingTabs.removeTab(port.sender.tab.id);
+
+    // Close rich presence if no more tabs are open
+    if (Object.keys(ports).length <= 0)
+        closeRichPresence();
 
     console.log(`Tab Disconnected: ${port.sender.tab.id}`);
 }

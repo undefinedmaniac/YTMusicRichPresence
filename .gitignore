@@ -1,5 +1,10 @@
 .vscode
-build
-discord_game_sdk.dll
-YTMusicRichPresence.exe
+build/CMakeFiles
+build/cmake_install.cmake
+build/CMakeCache.txt
+build/Makefile
+build/YTMusicRichpresence.exe
+build/discord_game_sdk.dll
 extension/jsconfig.json
+extension/launch-chrome.bat
+extension/chrome-profile
